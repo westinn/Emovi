@@ -3,6 +3,8 @@ import indicoio
 import numpy
 from math import sqrt
 from PIL import Image
+import requests
+requests.packages.urllib3.disable_warnings()
 indicoio.config.api_key = '78845ad351b86ed13eced5fad99ed78f'
 
 happy = Image.open('emojis/happy.png')
@@ -103,52 +105,29 @@ def pasteEmojis_effectful(img, faceInfo):
 
 # [String] -> [Image]
 # Effect: Calls the Indico API
-def urlsToImagesChunk(imgUrls):
-	chunkSize = round(sqrt(len(imgUrls)))
-	chunks = []
+def urlsToImages(imgUrls, directory):
 	imgs = []
+	i = 0
+	denom = str(len(imgUrls))
 
-	while imgUrls:
-		chunks.append(imgUrls[:chunkSize])
-		imgUrls = imgUrls[chunkSize:]
+	if not os.path.exists('Output/' + directory):
+		os.makedirs('Output/' + directory)
 
-	for chunk in chunks:
-		try:
-			imgs += urlsToImages(chunk)
-		except indicoio.utils.errors.IndicoError:
-			imgs += urlsToImagesSlow(chunk)
-		print(len(imgs))
-
-	return imgs
-
-
-# [String] -> [Image]
-# Effect: Calls the Indico API
-def urlsToImages(imgUrls):
-	imgInfos = indicoio.fer(imgUrls, detect=True)
-	imgs = []
-
-	for url, imgInfo in zip(imgUrls, imgInfos):
+	for i, url in enumerate(imgUrls):
 		img = Image.open(url)
-		[ pasteEmojis_effectful(img, faceInfo) for faceInfo in imgInfo ]
-		imgs.append(img)
 
-	return imgs
-
-
-# [String] -> [Image]
-# Effect: Calls the Indico API
-def urlsToImagesSlow(imgUrls):
-	imgs = []
-
-	for url in imgUrls:
-		img = Image.open(url)
 		try:
 			imgInfo = indicoio.fer(url, detect=True)
 			[ pasteEmojis_effectful(img, faceInfo) for faceInfo in imgInfo ]
+			imgs.append(img)
+			i += 1
+			print(str(i) + '/' + denom)
 		except indicoio.utils.errors.IndicoError:
+			imgs.append(img)
+			i += 1
+			print(str(i) + '/' + denom)
+		except requests.exceptions.ConnectionError:
 			pass
-		imgs.append(img)
 
 	return imgs
 
@@ -172,11 +151,13 @@ def gifUrlToFrames(url):
 			try:
 				imgInfo = indicoio.fer(numpy.array(frame), detect=True)
 				[ pasteEmojis_effectful(frame, faceInfo) for faceInfo in imgInfo ]
+				imgs.append(frame)
+				i += 1
 			except indicoio.utils.errors.IndicoError:
+				imgs.append(frame)
+				i += 1
+			except requests.exceptions.ConnectionError:
 				pass
-
-			imgs.append(frame)
-			i += 1
 
 	except EOFError:
 		return imgs
@@ -205,17 +186,16 @@ def processMovieUrl_effectful(url):
 
 	movieName = url.split('/')[-1].split('.')[0]
 
-	# cut the movie
-	# call_command("ffmpeg -i D://Nick//Downloads//TV-Movies//Movies//Star_Wars//Star.Wars.Episode.IV.A.New.Hope.1977.mkv -ss 00:32:40 -to 00:33:11 -async 1 cut.mp4")
-
 	if not os.path.exists('Input/' + movieName):
 		os.makedirs('Input/' + movieName)
 	if not os.path.exists('Output/' + movieName):
 		os.makedirs('Output/' + movieName)
 
-	# transform movie into frames
-	# works
-	call_command('ffmpeg -i ' + url + ' -vf fps=5 Input/' + movieName + '/%09d.png')
+	# movie to frames
+	call_command('ffmpeg -i ' + url + ' -vf fps=10 Input/' + movieName + '/%09d.png')
+
+	# movie to audio
+	call_command('ffmpeg -ss 0 -i ' + url + ' Output/' + movieName + '/audio.mp3')
 
 	i = 1
 	urls = []
@@ -223,30 +203,21 @@ def processMovieUrl_effectful(url):
 		urls.append('Input/' + movieName + ('/%09d.png' % i))
 		i += 1
 
-	frames = urlsToImagesChunk(urls)
+	frames = urlsToImages(urls, movieName)
 
 	for url, frame in zip(urls, frames):
 		url = url.split('/')[-1]
 		frame.save('Output/' + movieName + '/' + url)
 
-	# recompile images into movie
-	# way faster than original
-	call_command('ffmpeg -framerate 5 -i Output/' + movieName + '/%09d.png -c:v libx264 -r 30 -pix_fmt yuv420p Output/' + movieName + '.mp4')
-	# call_command("ffmpeg -framerate 1 -i D://Nick//Documents//School//NEU//Personal//Personal_Workspace//Emovi//frames//out%09d.png -c:v libx264 -vf fps=25 -pix_fmt yuv420p newEmovi.mp4")
+	# frames to movie
+	call_command('ffmpeg -framerate 10 -i Output/' + movieName + '/%09d.png -c:v libx264 -r 30 -pix_fmt yuv420p Output/_' + movieName + '_.mp4')
 
-	# subprocess.Popen(["C://Program Files//VideoLAN//VLC//vlc.exe", "newEmovi.mp4"])
+	# merge video and audio
+	call_command('ffmpeg -i Output/_' + movieName + '_.mp4 -i Output/' + movieName + '/audio.mp3 -codec copy -shortest Output/' + movieName + '.mp4')
 
-# processGifUrl_effectful('Input/ramsey2.gif')
-processMovieUrl_effectful('Input//testmovie.mp4')
-
-
-# for img in gifUrlToFrames('Input/ramsey.gif'):
-# 	img.show()
-
-# for img in urlsToImagesSlow(['Input/group.jpg', 'Input/knocks.jpg', 'Input/surprise.jpg', 'Input/many.jpg', 'Input/angry.jpg']):
-# 	img.show()
+processMovieUrl_effectful('Input/officespace.mp4')
 
 '''
 cd c:/users/dan/documents/python/emovi
-python indicoTest.py
+python emovi.py
 '''
