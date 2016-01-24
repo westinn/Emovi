@@ -10,7 +10,13 @@ def call_command(command):
 # works
 call_command("ffmpeg -i cut.mp4 -vf fps=10 D://Nick//Documents//School//NEU//Personal//Personal_Workspace//Emovi//frames//out%09d.png")
 
+
+
+
+
 # recompile images into movie
 # way faster than original
 call_command("ffmpeg -framerate 10 -i D://Nick//Documents//School//NEU//Personal//Personal_Workspace//Emovi//frames//out%09d.png -c:v libx264 -r 30 -pix_fmt yuv420p newEmovi.mp4")
 # call_command("ffmpeg -framerate 1 -i D://Nick//Documents//School//NEU//Personal//Personal_Workspace//Emovi//frames//out%09d.png -c:v libx264 -vf fps=25 -pix_fmt yuv420p newEmovi.mp4")
+
+# subprocess.Popen(["C://Program Files//VideoLAN//VLC//vlc.exe", "newEmovi.mp4"])
