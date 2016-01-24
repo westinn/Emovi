@@ -1,6 +1,7 @@
 import os, subprocess
 import indicoio
 import numpy
+import easygui
 from math import sqrt
 from PIL import Image
 import requests
@@ -102,16 +103,15 @@ def pasteEmojis_effectful(img, faceInfo):
 	emoji = emoji.resize((x2-x1, y2-y1))
 	img.paste(emoji, (x1,y1), emoji)
 
+fileNameAndPath = easygui.fileopenbox(title = 'Choose your file:', filetypes
+				= '*.mp4', '*.mkv', '*.png', '*.jpeg', '*.jpg', '*.bmp')
 
 # [String] -> [Image]
 # Effect: Calls the Indico API
-def urlsToImages(imgUrls, directory):
+def urlsToImages(imgUrls):
 	imgs = []
 	i = 0
 	denom = str(len(imgUrls))
-
-	if not os.path.exists('Output/' + directory):
-		os.makedirs('Output/' + directory)
 
 	for i, url in enumerate(imgUrls):
 		img = Image.open(url)
@@ -215,7 +215,18 @@ def processMovieUrl_effectful(url):
 	# merge video and audio
 	call_command('ffmpeg -i Output/_' + movieName + '_.mp4 -i Output/' + movieName + '/audio.mp3 -codec copy -shortest Output/' + movieName + '.mp4')
 
-processMovieUrl_effectful('Input/officespace.mp4')
+videoTypes = ['mp4', 'mkv']
+picTypes = ['png', 'jpeg', 'jpg', 'bmp']
+gifTypes = ['gif']
+fileTypeCheck = fileNameAndPath.split('.')[-1]
+if (fileTypeCheck in videoTypes):
+	processMovieUrl_effectful(fileNameAndPath)
+elif (fileTypeCheck in gifTypes):
+	processGifUrl_effectful(fileNameAndPath)
+elif (fileTypeCheck in picTypes):
+	img = urlsToImages([fileNameAndPath])[0]
+	img.save('Output/' + fileNameAndPath.split('/')[-1])
+
 
 '''
 cd c:/users/dan/documents/python/emovi
