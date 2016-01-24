@@ -1,12 +1,12 @@
 import os, subprocess
 import indicoio
 import numpy
-import easygui
 from math import sqrt
 from PIL import Image
+import easygui
 import requests
-requests.packages.urllib3.disable_warnings()
-indicoio.config.api_key = '78845ad351b86ed13eced5fad99ed78f'
+
+# Dependencies: numpy, easygui, ffmpeg
 
 happy = Image.open('emojis/happy.png')
 happyPlus = Image.open('emojis/happyPlus.png')
@@ -103,31 +103,94 @@ def pasteEmojis_effectful(img, faceInfo):
 	emoji = emoji.resize((x2-x1, y2-y1))
 	img.paste(emoji, (x1,y1), emoji)
 
-fileNameAndPath = easygui.fileopenbox(title = 'Choose your file:', filetypes
-				= '*.mp4', '*.mkv', '*.png', '*.jpeg', '*.jpg', '*.bmp')
+
+# [ImgInfo] Int Int -> None
+def smoothenFaces(imgInfos, w, h):
+	if not imgInfos:
+		return None
+
+	for i in range(1, len(imgInfos) - 1):
+		for faceInfo in imgInfos[i]:
+			x1, y1 = faceInfo['location']['top_left_corner']
+			x2, y2 = faceInfo['location']['bottom_right_corner']
+
+			prevIndex = getNearbyFace((x1 + x2)/2, (y1 + y2)/2, w, h, imgInfos[i-1])
+			nextIndex = getNearbyFace((x1 + x2)/2, (y1 + y2)/2, w, h, imgInfos[i+1])
+
+			adjs = []
+			if prevIndex is not None: adjs.append(imgInfos[i-1][prevIndex])
+			adjs.append(faceInfo)
+			if nextIndex is not None: adjs.append(imgInfos[i+1][nextIndex])
+
+			def x1(fInfo): return fInfo['location']['top_left_corner'][0]
+			def y1(fInfo): return fInfo['location']['top_left_corner'][1]
+			def x2(fInfo): return fInfo['location']['bottom_right_corner'][0]
+			def y2(fInfo): return fInfo['location']['bottom_right_corner'][1]
+			length = len(adjs)
+
+			xAvg = sum((x1(fInfo) + x2(fInfo)) / 2 for fInfo in adjs) / length
+			yAvg = sum((y1(fInfo) + y2(fInfo)) / 2 for fInfo in adjs) / length
+			wAvg = sum(x2(fInfo) - x1(fInfo) for fInfo in adjs) / length
+			hAvg = sum(y2(fInfo) - y1(fInfo) for fInfo in adjs) / length
+
+			x1, y1 = xAvg - wAvg/2, yAvg - hAvg/2
+			x2, y2 = xAvg + wAvg/2, yAvg + hAvg/2
+
+			faceInfo['location']['top_left_corner'] = int(x1), int(y1)
+			faceInfo['location']['bottom_right_corner'] = int(x2), int(y2)
+
+			for emotion in ('Happy', 'Sad', 'Angry', 'Fear', 'Surprise', 'Neutral'):
+				avg = sum(fInfo['emotions'][emotion] for fInfo in adjs) / length
+				faceInfo[emotion] = avg
+
+
+# Int Int Int Int ImgInfo  -> Int
+# returns index of nearby face, or None if none exists
+def getNearbyFace(x, y, w, h, imgInfo):
+	if not imgInfo:
+		return None
+
+	for i, faceInfo in enumerate(imgInfo):
+		if not faceInfo:
+			continue
+
+		(x1,y1) = faceInfo['location']['top_left_corner']
+		(x2,y2) = faceInfo['location']['bottom_right_corner']
+		dx = abs(x - (x1+x2)/2)
+		dy = abs(y - (y1+y2)/2)
+
+		if dx < w/10 and dy < h/10:
+			return i
+
 
 # [String] -> [Image]
 # Effect: Calls the Indico API
 def urlsToImages(imgUrls):
-	imgs = []
-	i = 0
 	denom = str(len(imgUrls))
+	imgInfos = []
+	i = 0
 
 	for i, url in enumerate(imgUrls):
-		img = Image.open(url)
-
 		try:
 			imgInfo = indicoio.fer(url, detect=True)
-			[ pasteEmojis_effectful(img, faceInfo) for faceInfo in imgInfo ]
-			imgs.append(img)
+			imgInfos.append(imgInfo)
 			i += 1
 			print(str(i) + '/' + denom)
 		except indicoio.utils.errors.IndicoError:
-			imgs.append(img)
+			imgInfos.append({})
 			i += 1
 			print(str(i) + '/' + denom)
 		except requests.exceptions.ConnectionError:
 			pass
+
+	print('Smoothening...')
+	imgs = [ Image.open(url) for url in imgUrls ]
+	smoothenFaces(imgInfos, imgs[0].size[0], imgs[0].size[1])
+
+	print('Adding emojis...')
+	for img, imgInfo in zip(imgs, imgInfos):
+		for faceInfo in imgInfo:
+			pasteEmojis_effectful(img, faceInfo)
 
 	return imgs
 
@@ -153,7 +216,7 @@ def gifUrlToFrames(url):
 				[ pasteEmojis_effectful(frame, faceInfo) for faceInfo in imgInfo ]
 				imgs.append(frame)
 				i += 1
-			except indicoio.utils.errors.IndicoError:
+			except indicoio.utils.errors.IndicoError: 
 				imgs.append(frame)
 				i += 1
 			except requests.exceptions.ConnectionError:
@@ -168,7 +231,7 @@ def gifUrlToFrames(url):
 # Effect: creates an mp4 of a gif and saves it in /output
 def processGifUrl_effectful(url):
 	framerate = Image.open(url).info['duration'] / 1000.0
-	gifName = url.split('/')[-1].split('.')[0]
+	gifName = url.split('/')[-1].split('\\')[-1].split('.')[0]
 	frames = gifUrlToFrames(url)
 
 	if not os.path.exists('Output/' + gifName):
@@ -176,7 +239,7 @@ def processGifUrl_effectful(url):
 
 	[ frame.save('Output/' + gifName + ('/%003d.png' % i)) for i, frame in enumerate(frames) ]
 
-	subprocess.Popen('ffmpeg -framerate ' + str(1/framerate) + ' -i Output/' + gifName + '/%003d.png '
+	subprocess.Popen('ffmpeg -framerate ' + str(1/framerate) + ' -i Output/' + gifName + '/%003d.png ' 
 					 + '-c:v libx264 -r 30 -pix_fmt yuv420p Output/' + gifName + '.mp4')
 
 
@@ -184,7 +247,7 @@ def processMovieUrl_effectful(url):
 	def call_command(command):
 		subprocess.call(command.split(' '))
 
-	movieName = url.split('/')[-1].split('.')[0]
+	movieName = url.split('/')[-1].split('\\')[-1].split('.')[0]
 
 	if not os.path.exists('Input/' + movieName):
 		os.makedirs('Input/' + movieName)
@@ -203,30 +266,37 @@ def processMovieUrl_effectful(url):
 		urls.append('Input/' + movieName + ('/%09d.png' % i))
 		i += 1
 
-	frames = urlsToImages(urls, movieName)
+	frames = urlsToImages(urls)
 
 	for url, frame in zip(urls, frames):
-		url = url.split('/')[-1]
+		url = url.split('/')[-1].split('\\')[-1]
 		frame.save('Output/' + movieName + '/' + url)
 
 	# frames to movie
-	call_command('ffmpeg -framerate 10 -i Output/' + movieName + '/%09d.png -c:v libx264 -r 30 -pix_fmt yuv420p Output/_' + movieName + '_.mp4')
+	call_command('ffmpeg -framerate 10 -i Output/' + movieName + '/%09d.png -c:v libx264 -r 30 -pix_fmt yuv420p Output/' + movieName + '/_' + movieName + '_.mp4')
 
 	# merge video and audio
-	call_command('ffmpeg -i Output/_' + movieName + '_.mp4 -i Output/' + movieName + '/audio.mp3 -codec copy -shortest Output/' + movieName + '.mp4')
+	call_command('ffmpeg -i Output/' + movieName + '/_' + movieName + '_.mp4 -i Output/' + movieName + '/audio.mp3 -codec copy -shortest Output/' + movieName + '.mp4')
+
+
+requests.packages.urllib3.disable_warnings()
+indicoio.config.api_key = '78845ad351b86ed13eced5fad99ed78f'
+
+fileNameAndPath = easygui.fileopenbox(title='Choose your file:', 
+									  filetypes=('*.mp4', '*.mkv', '*.png', '*.jpeg', '*.jpg', '*.bmp', '*.gif'))
 
 videoTypes = ['mp4', 'mkv']
 picTypes = ['png', 'jpeg', 'jpg', 'bmp']
-gifTypes = ['gif']
-fileTypeCheck = fileNameAndPath.split('.')[-1]
-if (fileTypeCheck in videoTypes):
-	processMovieUrl_effectful(fileNameAndPath)
-elif (fileTypeCheck in gifTypes):
-	processGifUrl_effectful(fileNameAndPath)
-elif (fileTypeCheck in picTypes):
-	img = urlsToImages([fileNameAndPath])[0]
-	img.save('Output/' + fileNameAndPath.split('/')[-1])
 
+fileTypeCheck = fileNameAndPath.split('.')[-1]
+
+if fileTypeCheck == 'gif':
+	processGifUrl_effectful(fileNameAndPath)
+elif fileTypeCheck in videoTypes:
+	processMovieUrl_effectful(fileNameAndPath)
+elif fileTypeCheck in picTypes:
+	img = urlsToImages([fileNameAndPath])[0]
+	img.save('Output/' + fileNameAndPath.split('/')[-1].split('\\')[-1])
 
 '''
 cd c:/users/dan/documents/python/emovi
