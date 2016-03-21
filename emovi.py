@@ -280,7 +280,8 @@ def processMovieUrl_effectful(url):
 
 
 requests.packages.urllib3.disable_warnings()
-indicoio.config.api_key = '78845ad351b86ed13eced5fad99ed78f'
+indicoio.config.api_key =
+'********************************'
 
 fileNameAndPath = easygui.fileopenbox(title='Choose your file:', 
 									  filetypes=('*.mp4', '*.mkv', '*.png', '*.jpeg', '*.jpg', '*.bmp', '*.gif'))
